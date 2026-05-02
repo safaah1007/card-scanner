@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Card to Sheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f9; }
+        #preview { width: 100%; max-width: 400px; border-radius: 10px; margin-bottom: 10px; display: none; }
+        .btn { background: #007aff; color: white; padding: 15px 25px; border: none; border-radius: 8px; font-size: 16px; width: 100%; margin-top: 10px; }
+        input { width: 90%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h2>📇 Business Card Scanner</h2>
+    
+    <input type="file" id="cameraInput" accept="image/*" capture="camera" style="display:none">
+    <button class="btn" onclick="document.getElementById('cameraInput').click()">📸 Snap Photo</button>
+    
+    <img id="preview">
+    <p id="status"></p>
+
+    <div id="results" style="display:none">
+        <input type="text" id="name" placeholder="Name">
+        <input type="text" id="email" placeholder="Email">
+        <input type="text" id="phone" placeholder="Phone">
+        <button class="btn" style="background:#34c759" onclick="sendToSheet()">✅ Save to Google Sheets</button>
+    </div>
+
+    <script>
+        const API_URL = https://script.google.com/macros/s/AKfycbyIwd-oqDZm12YElSE5Ncuo-UlLOjEN9wjZuV-JdhXKEpt7FucydIQeIzhjo0VVv-83/exec;
+        const cameraInput = document.getElementById('cameraInput');
+        const status = document.getElementById('status');
+
+        cameraInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show Preview
+            document.getElementById('preview').src = URL.createObjectURL(file);
+            document.getElementById('preview').style.display = "block";
+            
+            status.innerText = "🌀 Reading text... please wait.";
+            
+            // OCR Processing
+            const result = await Tesseract.recognize(file, 'eng');
+            const text = result.data.text;
+            
+            // Simple Parsing Logic (Regex)
+            const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            const phoneMatch = text.match(/[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}/);
+            
+            // Fill Fields
+            document.getElementById('email').value = emailMatch ? emailMatch[0] : "";
+            document.getElementById('phone').value = phoneMatch ? phoneMatch[0] : "";
+            document.getElementById('name').value = text.split('\n')[0]; // Best guess: first line
+            
+            document.getElementById('results').style.display = "block";
+            status.innerText = "Scan Complete! Verify info below.";
+            window.fullText = text; // Save for the 'raw' column
+        });
+
+        async function sendToSheet() {
+            const payload = {
+                name: document.getElementById('name').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                raw: window.fullText
+            };
+
+            status.innerText = "Sending to Sheets...";
+            
+            await fetch(API_URL, {
+                method: "POST",
+                mode: "no-cors", // Crucial for Google Apps Script
+                body: JSON.stringify(payload)
+            });
+
+            alert("Data Saved!");
+            location.reload();
+        }
+    </script>
+</body>
+</html>
