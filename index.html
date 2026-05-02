@@ -1,84 +1,91 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Card to Sheet</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Card Scanner</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f9; }
-        #preview { width: 100%; max-width: 400px; border-radius: 10px; margin-bottom: 10px; display: none; }
-        .btn { background: #007aff; color: white; padding: 15px 25px; border: none; border-radius: 8px; font-size: 16px; width: 100%; margin-top: 10px; }
-        input { width: 90%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; }
+        :root { --ios-blue: #007aff; --ios-green: #34c759; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f2f2f7; margin: 0; padding: 20px; color: #1c1c1e; }
+        .container { max-width: 400px; margin: 0 auto; text-align: center; }
+        h2 { margin-bottom: 20px; font-weight: 600; }
+        #preview { width: 100%; border-radius: 12px; margin-top: 15px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .btn { background-color: var(--ios-blue); color: white; border: none; border-radius: 10px; padding: 16px; font-size: 17px; font-weight: 600; width: 100%; margin-top: 20px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .btn:active { opacity: 0.7; }
+        #status { margin-top: 15px; font-size: 14px; color: #8e8e93; min-height: 1.2em; }
+        .loading-spinner { display: none; margin: 10px auto; width: 24px; height: 24px; border: 3px solid rgba(0,122,255,.3); border-radius: 50%; border-top-color: var(--ios-blue); animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <h2>📇 Business Card Scanner</h2>
+
+<div class="container">
+    <h2>Card Scanner</h2>
     
-    <input type="file" id="cameraInput" accept="image/*" capture="camera" style="display:none">
-    <button class="btn" onclick="document.getElementById('cameraInput').click()">📸 Snap Photo</button>
+    <p id="status">Ready to scan</p>
+    <div id="loading" class="loading-spinner"></div>
+
+    <input type="file" id="cameraInput" accept="image/jpeg" capture="camera" style="display:none">
     
-    <img id="preview">
-    <p id="status"></p>
+    <button class="btn" id="mainBtn" onclick="document.getElementById('cameraInput').click()">📸 Take Photo</button>
+    
+    <img id="preview" alt="Business Card Preview">
+</div>
 
-    <div id="results" style="display:none">
-        <input type="text" id="name" placeholder="Name">
-        <input type="text" id="email" placeholder="Email">
-        <input type="text" id="phone" placeholder="Phone">
-        <button class="btn" style="background:#34c759" onclick="sendToSheet()">✅ Save to Google Sheets</button>
-    </div>
+<script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbwX2xOdyhYdReCCud379_T80dJlWigb2SSFWDB4efW2pPss7QdkxZJBlwoCupJHENY/exec";
+    const cameraInput = document.getElementById('cameraInput');
+    const status = document.getElementById('status');
+    const loading = document.getElementById('loading');
+    const preview = document.getElementById('preview');
+    const mainBtn = document.getElementById('mainBtn');
 
-    <script>
-        const API_URL = https://script.google.com/macros/s/AKfycbyIwd-oqDZm12YElSE5Ncuo-UlLOjEN9wjZuV-JdhXKEpt7FucydIQeIzhjo0VVv-83/exec;
-        const cameraInput = document.getElementById('cameraInput');
-        const status = document.getElementById('status');
+    cameraInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-        cameraInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+        // Display preview
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = "block";
+        
+        // UI Updates
+        status.innerText = "AI is analyzing card...";
+        loading.style.display = "block";
+        mainBtn.disabled = true;
+        mainBtn.style.backgroundColor = "#aeaeb2";
 
-            // Show Preview
-            document.getElementById('preview').src = URL.createObjectURL(file);
-            document.getElementById('preview').style.display = "block";
+        try {
+            // Convert image to Base64 for Gemini
+            const base64Image = await toBase64(file);
             
-            status.innerText = "🌀 Reading text... please wait.";
-            
-            // OCR Processing
-            const result = await Tesseract.recognize(file, 'eng');
-            const text = result.data.text;
-            
-            // Simple Parsing Logic (Regex)
-            const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-            const phoneMatch = text.match(/[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}/);
-            
-            // Fill Fields
-            document.getElementById('email').value = emailMatch ? emailMatch[0] : "";
-            document.getElementById('phone').value = phoneMatch ? phoneMatch[0] : "";
-            document.getElementById('name').value = text.split('\n')[0]; // Best guess: first line
-            
-            document.getElementById('results').style.display = "block";
-            status.innerText = "Scan Complete! Verify info below.";
-            window.fullText = text; // Save for the 'raw' column
-        });
-
-        async function sendToSheet() {
-            const payload = {
-                name: document.getElementById('name').value,
-                email: document.getElementById('email').value,
-                phone: document.getElementById('phone').value,
-                raw: window.fullText
-            };
-
-            status.innerText = "Sending to Sheets...";
-            
-            await fetch(API_URL, {
+            // Send to Google Apps Script
+            const response = await fetch(API_URL, {
                 method: "POST",
-                mode: "no-cors", // Crucial for Google Apps Script
-                body: JSON.stringify(payload)
+                mode: "no-cors", // Required for Google Scripts
+                body: JSON.stringify({ imageBytes: base64Image.split(',')[1] })
             });
 
-            alert("Data Saved!");
-            location.reload();
+            // Feedback
+            status.innerText = "✅ Saved to Google Sheets!";
+            setTimeout(() => { location.reload(); }, 3000);
+
+        } catch (error) {
+            console.error(error);
+            status.innerText = "❌ Error. Please try again.";
+            mainBtn.disabled = false;
+            mainBtn.style.backgroundColor = "#007aff";
+        } finally {
+            loading.style.display = "none";
         }
-    </script>
+    });
+
+    const toBase64 = file => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+</script>
+
 </body>
 </html>
